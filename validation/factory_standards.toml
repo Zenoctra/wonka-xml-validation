@@ -1,0 +1,43 @@
+# Wonka Factory Safety Standards
+#
+# Rules that every Boomi process export in xml-processes/ must meet before it can
+# be deployed. The validator (validate_processes.py) reads this file on every run,
+# so changing a rule here needs no code change.
+#
+# Changes to this file are owner-protected (see .github/CODEOWNERS): a pull request
+# should not be able to relax the rules that are checking it.
+
+# Rule: "Process must have quality control error handling"
+# A process passes when at least one shape of `shape_type` has a label that
+# contains `label_keyword`, compared case-insensitively. Both the shape's
+# `userlabel` attribute and the nested <returndocuments label="..."> are checked.
+[error_handling]
+shape_type = "returndocuments"
+label_keyword = "error"
+
+# Rule: "No deprecated candy-making components"
+# A process fails if any element in it has a componentId on this list.
+# IDs are compared as plain text (trimmed, case-insensitive). They are not
+# parsed as UUIDs, because some legacy IDs below are not valid UUIDs.
+#
+# To ban another component, add a new [[deprecated_components]] block.
+
+[[deprecated_components]]
+id = "ab12cd34-5678-90ef-ghij-klmnopqrstuv"
+name = "Legacy Taffy Puller v1.0"
+reason = "Known to create sentient taffy."
+
+[[deprecated_components]]
+id = "ff00aa11-2233-4455-6677-889900bbccdd"
+name = "Chocolate Tempering Module v2.1"
+reason = "Random chance of creating exploding chocolate bars."
+
+[[deprecated_components]]
+id = "151411ac-6724-21ae-giz-00000000azz1a"
+name = "Wonka Bar Wrapper v0.9"
+reason = "Privilege escalation vulnerability grants unauthorized factory tour access."
+
+[[deprecated_components]]
+id = "12345678-9abc-def0-1234-56789abcdef0"
+name = "Sugar Rush Accelerator v3.2"
+reason = "Banned after the Great Candy Cane Incident of 2020."
