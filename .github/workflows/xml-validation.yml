@@ -1,0 +1,171 @@
+# Factory Safety Standards gate for Boomi process XML.
+#
+# Runs on pull requests that touch process XML in xml-processes/, or that touch
+# the validation tooling itself. The check fails if any process breaks the rules
+# in validation/factory_standards.toml, and the results are posted to the PR.
+#
+# To actually block merges, mark the "Factory safety standards" check as
+# required in the branch protection rules for main (see README).
+
+name: XML Validation
+
+on:
+  pull_request:
+    paths:
+      - "xml-processes/**/*.xml"
+      - "xml-processes/**/*.XML"
+      # A change to the rules or the validator re-checks every process.
+      - "validation/**"
+      - ".github/actions/validate-process-xml/**"
+      - ".github/workflows/xml-validation.yml"
+  # Manual full scan of xml-processes/ from the Actions tab.
+  workflow_dispatch:
+
+# Nothing by default. Each job asks for only what it needs.
+permissions: {}
+
+# A new push to the same PR cancels the run that is now out of date.
+concurrency:
+  group: xml-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Factory safety standards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      result: ${{ steps.validate.outputs.result }}
+      scope: ${{ steps.select.outputs.scope }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # On pull_request, HEAD is the merge of the PR into its base branch.
+          # Depth 2 also fetches the merge's parents, which is enough to diff
+          # against the base branch.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Select XML files to validate
+        id: select
+        shell: bash
+        run: |
+          set -euo pipefail
+          list="$RUNNER_TEMP/xml-files.txt"
+          tooling='^(validation/|\.github/actions/validate-process-xml/|\.github/workflows/xml-validation\.yml$)'
+
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            scope="all"
+          elif git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/pr-files.txt" &&
+               grep -Eq "$tooling" "$RUNNER_TEMP/pr-files.txt"; then
+            # The rules or the validator changed, so files that passed before
+            # might not pass now. Check every process, not only the changed ones.
+            scope="all"
+          else
+            scope="changed"
+          fi
+
+          if [[ "$scope" == "all" ]]; then
+            git -c core.quotePath=false ls-files -- xml-processes/ > "$list.raw"
+          else
+            # Added, copied, modified or renamed files. Deleted files have nothing to check.
+            git -c core.quotePath=false diff --name-only --diff-filter=ACMR HEAD^1 HEAD -- xml-processes/ > "$list.raw"
+          fi
+          grep -iE '\.xml$' "$list.raw" > "$list" || true
+
+          echo "Scope: $scope ($(wc -l < "$list") file(s))"
+          cat "$list"
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+          echo "files-from=$list" >> "$GITHUB_OUTPUT"
+
+      - name: Validate against Factory Safety Standards
+        id: validate
+        uses: ./.github/actions/validate-process-xml
+        with:
+          files-from: ${{ steps.select.outputs.files-from }}
+          report-path: ${{ runner.temp }}/xml-validation-report.md
+
+      - name: Upload report for the PR comment
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xml-validation-report
+          path: ${{ runner.temp }}/xml-validation-report.md
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Posting the comment is a separate job so that only this job, which never
+  # runs code from the PR, gets write access.
+  comment:
+    name: Post results to pull request
+    needs: validate
+    # Runs after a pass or a fail, but not if validation was cancelled. Skips
+    # PRs from forks, where GitHub gives pull_request workflows a read-only
+    # token (see README).
+    if: >-
+      always() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (needs.validate.result == 'success' || needs.validate.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download report
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true # a missing report gets its own message below
+        with:
+          name: xml-validation-report
+          path: report
+
+      - name: Create or update the PR comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SCOPE: ${{ needs.validate.outputs.scope }}
+        with:
+          script: |
+            const fs = require('fs');
+            // A hidden marker lets later runs find this comment and update it,
+            // so the PR has one current result instead of a new comment per push.
+            const marker = '<!-- wonka-xml-validation -->';
+            const reportFile = 'report/xml-validation-report.md';
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const scope = process.env.SCOPE === 'all'
+              ? 'all processes in `xml-processes/` (validation tooling changed)'
+              : 'XML files changed in this PR';
+
+            let report = fs.existsSync(reportFile)
+              ? fs.readFileSync(reportFile, 'utf8')
+              : '## 🍫 Factory Safety Standards: ⚠️ validation did not complete\n\nCheck the run log for the error.\n';
+            const limit = 60000; // GitHub's comment limit is 65,536 characters
+            if (report.length > limit) {
+              report = report.slice(0, limit) + '\n\n…report truncated, see the run summary for the full report.\n';
+            }
+
+            const body = [
+              marker,
+              report,
+              `<sub>Checked ${scope} at commit ${sha} · [View run](${process.env.RUN_URL})</sub>`,
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(
+              (c) => c.user?.type === 'Bot' && c.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              core.info(`Updated comment ${existing.html_url}`);
+            } else {
+              const { data } = await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              core.info(`Created comment ${data.html_url}`);
+            }

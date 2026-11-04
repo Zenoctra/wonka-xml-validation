@@ -1,0 +1,71 @@
+name: Validate Boomi process XML
+description: >-
+  Checks Boomi process XML exports against the Factory Safety Standards in
+  validation/factory_standards.toml. It writes a Markdown report, adds it to the
+  job summary, and puts error annotations on the offending lines.
+
+inputs:
+  files-from:
+    description: File listing the XML files to validate, one path per line.
+    required: true
+  rules:
+    description: Path to the rules file.
+    required: false
+    default: validation/factory_standards.toml
+  report-path:
+    description: Where to write the Markdown report.
+    required: false
+    default: xml-validation-report.md
+  python-version:
+    description: Python version to run the validator with (3.11 or newer).
+    required: false
+    default: "3.13"
+
+outputs:
+  result:
+    description: '"passed" or "failed".'
+    value: ${{ steps.validate.outputs.result }}
+  exit-code:
+    description: "Validator exit code: 0 passed, 1 validation failed, 2 usage or configuration error."
+    value: ${{ steps.validate.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Run validator
+      id: validate
+      shell: bash
+      # Inputs are passed through env vars, not ${{ }} inside the script, so a
+      # value can never be interpreted as shell code.
+      env:
+        FILES_FROM: ${{ inputs.files-from }}
+        RULES: ${{ inputs.rules }}
+        REPORT_PATH: ${{ inputs.report-path }}
+      run: |
+        set +e   # capture the validator's exit code instead of stopping here
+        python "$GITHUB_WORKSPACE/validation/validate_processes.py" \
+          --files-from "$FILES_FROM" \
+          --rules "$RULES" \
+          --markdown "$REPORT_PATH" \
+          --github-annotations
+        code=$?
+        set -e
+
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if [[ $code -eq 0 ]]; then
+          echo "result=passed" >> "$GITHUB_OUTPUT"
+        else
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+        fi
+
+        if [[ -f "$REPORT_PATH" ]]; then
+          cat "$REPORT_PATH" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "::error title=Validator error::The validator could not run (exit code $code). See the log above."
+        fi
+        exit $code

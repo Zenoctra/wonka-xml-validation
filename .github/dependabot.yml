@@ -1,0 +1,19 @@
+# Actions are pinned to full commit SHAs, which prevents a moved tag from
+# silently changing the code we run. Dependabot opens PRs to bump those pins
+# (and the pytest pin) so they don't go stale.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly

@@ -1,0 +1,7 @@
+# The rules and the CI that enforces them need review from their owners, so a
+# pull request can't relax the check that is validating it. This takes effect
+# once "Require review from Code Owners" is enabled in branch protection for main.
+
+/validation/   @Zenoctra
+/.github/      @Zenoctra
+/tests/        @Zenoctra
