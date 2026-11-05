@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><Component xmlns:bns="http://api.platform.boomi.com/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" branchId="QjoxNTE0MzA" branchName="main" componentId="9a4d9681-c0e6-448f-a8af-d9b45364e34a" createdBy="willy.wonka@chocolatefactory.com" createdDate="2025-03-12T06:04:10Z" currentVersion="true" deleted="false" folderFullPath="Wonka Chocolate Factory/Integrations/PRODUCTION PROCESSES" folderId="Rjo2NzY4OTg3" folderName="PRODUCTION PROCESSES" modifiedBy="charlie.bucket@chocolatefactory.com" modifiedDate="2025-07-18T07:44:25Z" name="Chocolate Recipe Distribution Process" type="process" version="3">
+  <bns:encryptedValues/>
+  <bns:description/>
+  <bns:object>
+    <process allowSimultaneous="false" enableUserLog="false" processLogOnErrorOnly="false" purgeDataImmediately="false" updateRunDates="false" workload="general">
+      <shapes>
+        <shape image="start" name="shape1" shapetype="start" userlabel="" x="208.0" y="222.0">
+          <configuration>
+            <passthroughaction/>
+          </configuration>
+          <dragpoints>
+            <dragpoint name="shape1.dragpoint1" toShape="shape3" x="368.0" y="232.0"/>
+          </dragpoints>
+        </shape>
+        <shape image="processroute_icon" name="shape3" shapetype="processroute" userlabel="" x="384.0" y="224.0">
+          <configuration>
+            <processroutecall abort="true" processRouteId="resource::rout:8dee9d0c-5658-4fad-badc-cebe716f84fa" processRouteName="[CHOCO] RECIPE QUALITY CONTROL ROUTER" routeType="processroute" wait="true">
+              <returnpaths>
+                <returnpaths childShapeName="route1" returnLabel="Quality Approved"/>
+                <returnpaths childShapeName="route2" returnLabel="Quality Failed"/>
+              </returnpaths>
+              <routeParameter key="0" valueType="track">
+                <trackparameter defaultValue="" propertyId="dynamicdocument.DDP_CHOCOLATE_TYPE" propertyName="Dynamic Document Property - DDP_CHOCOLATE_TYPE"/>
+              </routeParameter>
+            </processroutecall>
+          </configuration>
+          <dragpoints>
+            <dragpoint identifier="route1" name="shape3.dragpoint1" text="Quality Approved" toShape="shape7" x="544.0" y="136.0"/>
+            <dragpoint identifier="route2" name="shape3.dragpoint2" text="Quality Failed" toShape="shape6" x="544.0" y="232.0"/>
+            <dragpoint identifier="default" name="shape3.dragpoint3" text="Default" toShape="shape4" x="544.0" y="344.0"/>
+          </dragpoints>
+        </shape>
+        <shape image="stop_icon" name="shape4" shapetype="stop" x="560.0" y="336.0">
+          <configuration>
+            <stop continue="true"/>
+          </configuration>
+          <dragpoints/>
+        </shape>
+        <shape image="returndocuments_icon" name="shape5" shapetype="returndocuments" userlabel="Recipe Distribution Complete" x="800.0" y="128.0">
+          <configuration>
+            <returndocuments label="Recipe Distribution Complete"/>
+          </configuration>
+          <dragpoints/>
+        </shape>
+        <shape image="returndocuments_icon" name="shape6" shapetype="returndocuments" userlabel="Quality Control Error" x="560.0" y="224.0">
+          <configuration>
+            <returndocuments label="Quality Control Error"/>
+          </configuration>
+          <dragpoints/>
+        </shape>
+        <shape image="dataprocess_icon" name="shape7" shapetype="dataprocess" userlabel="Sanitize Recipe File Names" x="560.0" y="128.0">
+          <configuration>
+            <dataprocess>
+              <step index="1" key="1" name="Custom Scripting" processtype="12">
+                <dataprocessscript componentId="cf0dd5db-90d7-4087-a29d-d7a5363b4f7e" language="groovy" useCache="true" useComponent="true">
+                  <script>import java.util.Properties;
+import java.io.InputStream;
+
+// Clean up recipe file names for chocolate production systems
+for( int i = 0; i &lt; dataContext.getDataCount(); i++ ) {
+    InputStream is = dataContext.getStream(i);
+    Properties props = dataContext.getProperties(i);
+
+    // Remove special characters that could cause issues in recipe distribution
+    dataContext.storeStream(is, props);
+}</script>
+                </dataprocessscript>
+              </step>
+            </dataprocess>
+          </configuration>
+          <dragpoints>
+            <dragpoint name="shape7.dragpoint1" toShape="shape5" x="784.0" y="136.0"/>
+          </dragpoints>
+        </shape>
+      </shapes>
+    </process>
+  </bns:object>
+  <bns:processOverrides/>
+</Component>
