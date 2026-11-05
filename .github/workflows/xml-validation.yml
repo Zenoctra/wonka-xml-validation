@@ -41,6 +41,9 @@ jobs:
           # mapfile -d '' splits on it, so every name arrives exactly as written.
           git diff -z --name-only --diff-filter=d HEAD^1 HEAD -- xml-processes/ > changed.txt
           mapfile -d '' -t files < changed.txt
+          # Use the validator and rules from the base branch, not the PR's copy,
+          # so a pull request can't loosen the rules it's checked against.
+          git checkout HEAD^1 -- validation/
           python validation/validate_processes.py "${files[@]}" | tee report.md
 
       - name: Add results to the run summary
