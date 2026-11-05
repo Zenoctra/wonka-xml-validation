@@ -42,9 +42,10 @@ jobs:
           git diff -z --name-only --diff-filter=d HEAD^1 HEAD -- xml-processes/ > changed.txt
           mapfile -d '' -t files < changed.txt
           # Use the validator and rules from the base branch, not the PR's copy,
-          # so a pull request can't loosen the rules it's checked against.
+          # so a pull request can't loosen the rules it's checked against. -I
+          # (isolated mode) stops Python importing files the PR added beside them.
           git checkout HEAD^1 -- validation/
-          python validation/validate_processes.py "${files[@]}" | tee report.md
+          python -I validation/validate_processes.py "${files[@]}" | tee report.md
 
       - name: Add results to the run summary
         # Run even when validation failed, since that's when the report matters,
