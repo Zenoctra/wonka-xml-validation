@@ -97,4 +97,6 @@ python -m pytest
   the comment and link to the full summary, which also stays under GitHub's comment
   size limit. 
 - **Inline annotations** on the failing line in the pull request diff.
+- **Alerts and trends.** Notify the team when the validator itself breaks (exit code
+  `2`), and track which rules fail most often.
 
