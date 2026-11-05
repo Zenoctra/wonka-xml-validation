@@ -1,15 +1,21 @@
-# Checks every Boomi process XML changed in a pull request against the
+# Checks every file a pull request changes in xml-processes/ against the
 # Factory Safety Standards, then posts the results on the pull request.
 name: XML Validation
 
 on:
   pull_request:
     paths:
-      - "xml-processes/**/*.xml"
+      - "xml-processes/**"  # any file, so nothing in the folder can skip validation
 
 permissions:
   contents: read        # read the repository
   pull-requests: write  # post the results comment
+
+# A new push to the same pull request cancels the run that's now out of date,
+# so an older run can't overwrite the comment with older results.
+concurrency:
+  group: xml-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -20,25 +26,31 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2  # the PR's merge commit plus its parent, for the diff below
+          persist-credentials: false  # don't leave the token on disk for later steps
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
 
-      - name: Validate changed XML files
+      - name: Validate changed files
         shell: bash  # unlike the default, this fails the step if the validator fails, even with tee after it
         run: |
           # HEAD is the PR merged into its base branch, and HEAD^1 is the base
-          # branch, so this lists the XML files the PR adds or changes.
-          git diff --name-only --diff-filter=d HEAD^1 HEAD -- 'xml-processes/*.xml' > changed.txt
-          mapfile -t files < changed.txt  # one file per line, so names with spaces survive
+          # branch, so this lists the files the PR adds or changes in xml-processes/.
+          # -z separates the names with a NUL character instead of new lines, and
+          # mapfile -d '' splits on it, so every name arrives exactly as written.
+          git diff -z --name-only --diff-filter=d HEAD^1 HEAD -- xml-processes/ > changed.txt
+          mapfile -d '' -t files < changed.txt
           python validation/validate_processes.py "${files[@]}" | tee report.md
 
       - name: Add results to the run summary
         # Run even when validation failed, since that's when the report matters,
         # but not after a cancel. YAML reads a leading ! as special, hence the ${{ }}.
         if: ${{ !cancelled() }}
-        run: cat report.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          # If validation broke before writing a report, say so instead of posting nothing.
+          [ -s report.md ] || echo "## Factory Safety Standards: the check didn't finish. See the [workflow log]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)." > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Post results on the pull request
         # Pull requests from forks get a read-only token, so they can't comment.
@@ -49,10 +61,12 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           # Every workflow comments as the same bot, so a hidden marker identifies
-          # this workflow's comment. Update it if it exists, otherwise create it.
+          # this workflow's comment. Only the bot's own comments count, so a marker
+          # pasted by anyone else is ignored. Update it if it exists, otherwise create it.
           echo '<!-- xml-validation -->' >> report.md
-          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
-            --jq '.[] | select(.body | contains("<!-- xml-validation -->")) | .id' | tail -n 1)
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq '.[]
+            | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- xml-validation -->")))
+            | .id' | tail -n 1)
           if [ -n "$id" ]; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@report.md --silent
           else

@@ -68,36 +68,44 @@ def check_deprecated_components(root, blocklist):
 
 
 def validate_file(path, blocklist):
-    """Run every rule on one file, so all of its problems get reported."""
+    """Run every rule on one file, so all of its problems get reported.
+
+    Returns {rule name: problems}. An empty list means that rule passed.
+    """
     try:
         root = ET.parse(path).getroot()
-    except (ET.ParseError, OSError) as e:
-        return [f"Could not read the file as XML: {e}"]
-    return check_error_handling(root) + check_deprecated_components(root, blocklist)
+    except Exception as e:  # only the parse is inside the try, so any error here means an unreadable file
+        return {"Readable XML": [f"Could not read the file as XML: {e}"]}
+    return {
+        "Quality control error handling": check_error_handling(root),
+        "No deprecated components": check_deprecated_components(root, blocklist),
+    }
 
 
 def main(paths):
     try:
         blocklist = load_blocklist()
-    except (OSError, tomllib.TOMLDecodeError, KeyError) as e:
+    except Exception as e:  # any problem with the rules file means the tool can't run
         print(f"Could not load the rules file {RULES_FILE}: {e}")
         return 2
 
     results = {path: validate_file(path, blocklist) for path in paths}
-    failed = [path for path, problems in results.items() if problems]
+    failed = [path for path, checks in results.items() if any(checks.values())]
 
     if not paths:
-        headline = "no XML files to check"
+        headline = "no files to check"
     elif failed:
         headline = f"{len(failed)} of {len(paths)} file(s) failed"
     else:
         headline = f"all {len(paths)} file(s) passed"
     print(f"## Factory Safety Standards: {headline}\n")
 
-    for path, problems in results.items():
-        print(f"**{'FAIL' if problems else 'PASS'}** `{path}`")
-        for problem in problems:
-            print(f"- {problem}")
+    for path, checks in results.items():
+        print(f"**{'FAIL' if path in failed else 'PASS'}** `{path}`")
+        for rule, problems in checks.items():
+            print(f"- {rule}: {'FAILED' if problems else 'passed'}")
+            for problem in problems:
+                print(f"  - {problem}")
         print()
 
     return 1 if failed else 0

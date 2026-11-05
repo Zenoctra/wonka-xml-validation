@@ -17,15 +17,19 @@ def process(shapes):
 
 
 @pytest.mark.parametrize(
-    "filename, expected_problems",
+    "filename, expected_failed_rules",
     [
-        ("example_file_valid.xml", 0),
-        ("example_missing_error_handling.xml", 1),
-        ("example_with_deprecated_component.xml", 2),  # breaks both rules
+        ("example_file_valid.xml", []),
+        ("example_missing_error_handling.xml", ["Quality control error handling"]),
+        (
+            "example_with_deprecated_component.xml",  # breaks both rules
+            ["Quality control error handling", "No deprecated components"],
+        ),
     ],
 )
-def test_provided_samples(filename, expected_problems):
-    assert len(vp.validate_file(SAMPLES / filename, BLOCKLIST)) == expected_problems
+def test_provided_samples(filename, expected_failed_rules):
+    checks = vp.validate_file(SAMPLES / filename, BLOCKLIST)
+    assert [rule for rule, problems in checks.items() if problems] == expected_failed_rules
 
 
 def test_error_label_counts_in_any_case_and_either_place():
@@ -51,7 +55,16 @@ def test_deprecated_component_nested_inside_shape_in_any_case():
     assert len(vp.check_deprecated_components(process(shape), BLOCKLIST)) == 1
 
 
-def test_malformed_xml_is_reported_not_crashed(tmp_path):
+@pytest.mark.parametrize(
+    "content",
+    [
+        "<process><shapes></process>",  # broken tags
+        '<?xml version="1.0" encoding="x-bogus"?><process/>',  # unknown encoding
+        "",  # empty file
+    ],
+)
+def test_unreadable_file_is_reported_not_crashed(tmp_path, content):
     bad = tmp_path / "bad.xml"
-    bad.write_text("<process><shapes></process>")
-    assert "Could not read the file as XML" in vp.validate_file(bad, BLOCKLIST)[0]
+    bad.write_text(content)
+    problems = vp.validate_file(bad, BLOCKLIST)["Readable XML"]
+    assert "Could not read the file as XML" in problems[0]
