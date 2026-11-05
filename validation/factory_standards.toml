@@ -1,0 +1,25 @@
+# Factory Safety Standards: components that must never be deployed.
+#
+# To ban another component, add a [[deprecated_components]] block.
+# IDs are compared as plain text, ignoring case, because some of them
+# aren't valid UUIDs.
+
+# Known to create sentient taffy.
+[[deprecated_components]]
+id = "ab12cd34-5678-90ef-ghij-klmnopqrstuv"
+name = "Legacy Taffy Puller v1.0"
+
+# Random chance of creating exploding chocolate bars.
+[[deprecated_components]]
+id = "ff00aa11-2233-4455-6677-889900bbccdd"
+name = "Chocolate Tempering Module v2.1"
+
+# Privilege escalation vulnerability grants unauthorized factory tour access.
+[[deprecated_components]]
+id = "151411ac-6724-21ae-giz-00000000azz1a"
+name = "Wonka Bar Wrapper v0.9"
+
+# Banned after the Great Candy Cane Incident of 2020.
+[[deprecated_components]]
+id = "12345678-9abc-def0-1234-56789abcdef0"
+name = "Sugar Rush Accelerator v3.2"
