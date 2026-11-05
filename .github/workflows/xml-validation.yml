@@ -14,6 +14,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # this takes seconds, so don't let a stuck step run for GitHub's 6-hour default
     steps:
       # Actions are pinned to exact commits, so the code they run can't change under us.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,12 +35,26 @@ jobs:
           python validation/validate_processes.py "${files[@]}" | tee report.md
 
       - name: Add results to the run summary
-        if: always()
+        # Run even when validation failed, since that's when the report matters,
+        # but not after a cancel. YAML reads a leading ! as special, hence the ${{ }}.
+        if: ${{ !cancelled() }}
         run: cat report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Post results on the pull request
         # Pull requests from forks get a read-only token, so they can't comment.
-        if: always() && github.event.pull_request.head.repo.full_name == github.repository
+        if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository }}
+        shell: bash  # so a failed comment lookup fails the step instead of posting a duplicate
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment ${{ github.event.pull_request.number }} --body-file report.md --edit-last --create-if-none
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Every workflow comments as the same bot, so a hidden marker identifies
+          # this workflow's comment. Update it if it exists, otherwise create it.
+          echo '<!-- xml-validation -->' >> report.md
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | contains("<!-- xml-validation -->")) | .id' | tail -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@report.md --silent
+          else
+            gh pr comment "$PR" --body-file report.md
+          fi
