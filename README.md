@@ -5,31 +5,34 @@ Safety Standards on every pull request.
 
 ## Approach
 
-When a pull request changes XML files in `xml-processes/`, the
-[workflow](.github/workflows/xml-validation.yml) uses `git diff` to find those files
-and runs a [Python script](validation/validate_processes.py) on them. The script
-checks the two rules (quality control error handling and no deprecated components)
-and prints a Markdown report. The workflow adds the report to the run summary and
-posts it as a comment on the pull request, updating the same comment on later
-pushes. If any file fails, the check fails.
+When a pull request changes anything in `xml-processes/`, the
+[workflow](.github/workflows/xml-validation.yml) lists the files it added or changed
+and runs a [Python validator](validation/validate_processes.py) on each one. It uses
+the validator and rules from `main`, not the pull request's copy, so a pull request
+can't loosen the rules it's checked against. Every rule runs on every file, and the
+report shows each rule as passed or failed for each file. The report goes to the run
+summary and to one comment on the pull request, which is updated on later pushes. If
+any file fails, the check fails.
 
-The script reads each file as XML instead of searching the text. Text search is
-fragile. It would count "Error" in a script comment as error handling, and it would
-miss a component ID written with an XML character reference (`&#97;b12cd34-…`),
-which any XML reader, Boomi included, still reads as the banned ID. Each rule is its
-own function, and every rule runs on every file, so one run reports all of a file's
-problems. The blocklist lives in
+The validator reads each file as XML, a tree of shapes, instead of searching the
+text, so a word in a script comment or an escaped character can't fool it. For error
+handling, it looks at every Return Documents shape and passes the file if either of
+the shape's labels contains "error" in any case. For deprecated components, it
+collects every `componentId` on each shape and on everything inside it, and compares
+them to the blocklist, ignoring case. The blocklist lives in
 [`factory_standards.toml`](validation/factory_standards.toml), so banning a component
-is a config change, not a code change. Exit codes: `0` means every file passed, `1`
-means a file failed, and `2` means the rules file couldn't be loaded. The script uses
-only Python's standard library. The [tests](validation/test_validate_processes.py) use
-pytest.
+is a config change. Each rule is its own small function, so adding a rule doesn't
+touch the others. The validator uses only Python's standard library.
 
-I kept it deliberately small. The workflow can only read the repository and comment
-on pull requests. It uses GitHub's own actions for checkout and Python setup, pinned
-to exact commits. The rules are custom code, since no marketplace action knows
-Boomi's rules. Things I considered and left out are listed under potential
-improvements.
+I followed one rule: harden the supported path, and fail loudly on anything
+unsupported. A file in the folder that isn't readable XML fails instead of being
+skipped. A broken rules file exits with `2` (the tool broke) instead of `1` (a file
+failed), and if the check stops before writing a report, the summary and comment say
+so instead of going blank. The workflow can only read the repository and comment on
+pull requests, and it uses GitHub's own checkout and Python actions, pinned to exact
+commits. The rules are custom code, since no marketplace action knows Boomi's rules.
+The [tests](validation/test_validate_processes.py) cover the three samples and the
+edge cases, and the demo pull requests run it on GitHub.
 
 ## Running it locally
 
@@ -52,62 +55,40 @@ python -m pytest
 - **Component IDs** are checked on the shape and on every element inside it, because
   the bad sample has the banned ID on both the shape and its script step. IDs are
   compared as plain text, ignoring case, since two of the four aren't valid UUIDs.
-- **Changed files only.** A pull request checks the XML files it adds or changes.
-  Deleted files are skipped. A file that isn't valid XML fails.
+- **Changed files only.** A pull request checks every file it adds or changes in
+  `xml-processes/`, including subfolders. Deleted files are skipped. A file that
+  isn't readable XML fails, so nothing in the folder skips validation.
 - **Forks.** This repo is public, so reviewers may open pull requests from forks.
-  Those get a read-only token, so the check still runs but skips the comment. Inside
-  a company, people would normally use branches instead.
+  Those get a read-only token, so the check still runs but skips the comment. 
 - **Other workflows.** A real repo likely has other workflows commenting on pull
   requests as the same bot, so this workflow finds its own comment by a hidden
   marker instead of editing the bot's last comment.
 
-## Things I noticed in the samples
-
-- **The rule checks labels, not whether errors are handled.** A Return Documents
-  shape labeled "Error" with nothing connected to it would pass, and so would a
-  success path labeled "Complete (No Errors)". A stronger rule would require the
-  error shape to be reachable from a failure route. The valid sample already meets
-  that, so adding the rule wouldn't break it.
-- **All three samples share one process ID** (`9a4d9681-…`). That's probably
-  copy-paste in the samples. In production, two files with the same ID would
-  overwrite each other on deploy, which a "no duplicate IDs" check would catch.
 
 ## Potential improvements
 
+- **The rule checks labels, not whether errors are handled.** A Return Documents
+  shape labeled "Error" with nothing connected to it would pass, and so would a
+  success path labeled "Complete (No Errors)". A potential improvement would require 
+  the error shape to be reachable from a failure route. The valid sample already meets
+  that, so adding the rule wouldn't break it.
 - **Make it a real gate.** A failed check doesn't stop anyone from merging. Mark it
   as required in branch protection for `main`. One gotcha: this workflow only runs
-  when XML changes, so a required check would wait forever on other pull requests.
-  The fix is to always run it and skip the work when no XML changed.
-- **Close the bypass.** The rules live in the same repo, so one pull request could
-  delete a blocklist entry and add the banned component, and the check would pass.
-  Requiring code-owner review for `validation/` (CODEOWNERS) would close that. A
-  stronger option is to load the rules from the base branch or a separate, locked repo.
-- **Check existing processes when the rules change.** This check only looks at the
-  files a pull request changes, so a new ban won't flag processes that are already
-  merged. Running the validator on all of `xml-processes/` when the blocklist changes
+  when `xml-processes/` changes, so a required check would wait forever on other
+  pull requests. The fix is to always run it and skip the work when nothing there
+  changed.
+- **Check existing processes when the deprecated component blocklist changes.** This 
+  check only looks at the files a pull request changes, so a new ban won't flag 
+  processes that are already merged. 
+  Running the validator on all of `xml-processes/` when the blocklist changes
   would list what's affected. What to do about them is a team decision, and it can
   depend on why the component was banned: fix everything now (a security issue), set
   a deadline and track the rest as tech debt, or open automatic fix pull requests when
   there's a drop-in replacement. A severity or deadline per blocklist entry could
   support that, warning first and failing later. Either way, the full check should
   report what's affected, not suddenly block unrelated pull requests.
-- **One rule set for every repo.** Move the validator and rules into a shared,
-  versioned workflow, so every integration repo enforces the same standards.
-- **More rule options.** A severity per rule (warn or fail), exceptions that expire,
-  and matching "error" as a whole word (today a "Terror Tunnel Tour" label counts).
-  Also the two stronger rules under "Things I noticed in the samples."
-- **Treat the XML as untrusted input.** Reject files with a DOCTYPE, and escape text
-  from the XML before it goes into the comment, so a crafted label can't add
-  formatting or `@mention` people.
 - **Scale the report.** For a pull request with many files, put only the failures in
   the comment and link to the full summary, which also stays under GitHub's comment
-  size limit. Some teams would skip the comment entirely when everything passes.
+  size limit. 
 - **Inline annotations** on the failing line in the pull request diff.
-- **Comments on fork pull requests**, using a follow-up `workflow_run` workflow.
-- **Cancel outdated runs** when a new commit is pushed to the same pull request,
-  which also stops two runs from racing to post the comment.
-- **Alerts and trends.** Notify the team when the validator itself breaks (exit code
-  `2`), and track which rules fail most often.
-- **Run the tests in CI** with pinned test dependencies, and use Dependabot to keep
-  the pinned actions up to date, with a waiting period so a bad release gets caught
-  before it's adopted.
+
