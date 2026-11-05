@@ -1,0 +1,45 @@
+# Checks every Boomi process XML changed in a pull request against the
+# Factory Safety Standards, then posts the results on the pull request.
+name: XML Validation
+
+on:
+  pull_request:
+    paths:
+      - "xml-processes/**/*.xml"
+
+permissions:
+  contents: read        # read the repository
+  pull-requests: write  # post the results comment
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to exact commits, so the code they run can't change under us.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2  # the PR's merge commit plus its parent, for the diff below
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Validate changed XML files
+        shell: bash  # unlike the default, this fails the step if the validator fails, even with tee after it
+        run: |
+          # HEAD is the PR merged into its base branch, and HEAD^1 is the base
+          # branch, so this lists the XML files the PR adds or changes.
+          git diff --name-only --diff-filter=d HEAD^1 HEAD -- 'xml-processes/*.xml' > changed.txt
+          mapfile -t files < changed.txt  # one file per line, so names with spaces survive
+          python validation/validate_processes.py "${files[@]}" | tee report.md
+
+      - name: Add results to the run summary
+        if: always()
+        run: cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post results on the pull request
+        # Pull requests from forks get a read-only token, so they can't comment.
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file report.md --edit-last --create-if-none
