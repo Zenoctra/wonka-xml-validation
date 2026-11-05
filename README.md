@@ -54,6 +54,12 @@ python -m pytest
   compared as plain text, ignoring case, since two of the four aren't valid UUIDs.
 - **Changed files only.** A pull request checks the XML files it adds or changes.
   Deleted files are skipped. A file that isn't valid XML fails.
+- **Forks.** This repo is public, so reviewers may open pull requests from forks.
+  Those get a read-only token, so the check still runs but skips the comment. Inside
+  a company, people would normally use branches instead.
+- **Other workflows.** A real repo likely has other workflows commenting on pull
+  requests as the same bot, so this workflow finds its own comment by a hidden
+  marker instead of editing the bot's last comment.
 
 ## Things I noticed in the samples
 
@@ -74,9 +80,34 @@ python -m pytest
   The fix is to always run it and skip the work when no XML changed.
 - **Close the bypass.** The rules live in the same repo, so one pull request could
   delete a blocklist entry and add the banned component, and the check would pass.
-  Requiring code-owner review for `validation/` (CODEOWNERS) would close that.
-- **Re-check everything when the rules change**, since a new ban could hit processes
-  that are already merged.
+  Requiring code-owner review for `validation/` (CODEOWNERS) would close that. A
+  stronger option is to load the rules from the base branch or a separate, locked repo.
+- **Check existing processes when the rules change.** This check only looks at the
+  files a pull request changes, so a new ban won't flag processes that are already
+  merged. Running the validator on all of `xml-processes/` when the blocklist changes
+  would list what's affected. What to do about them is a team decision, and it can
+  depend on why the component was banned: fix everything now (a security issue), set
+  a deadline and track the rest as tech debt, or open automatic fix pull requests when
+  there's a drop-in replacement. A severity or deadline per blocklist entry could
+  support that, warning first and failing later. Either way, the full check should
+  report what's affected, not suddenly block unrelated pull requests.
+- **One rule set for every repo.** Move the validator and rules into a shared,
+  versioned workflow, so every integration repo enforces the same standards.
+- **More rule options.** A severity per rule (warn or fail), exceptions that expire,
+  and matching "error" as a whole word (today a "Terror Tunnel Tour" label counts).
+  Also the two stronger rules under "Things I noticed in the samples."
+- **Treat the XML as untrusted input.** Reject files with a DOCTYPE, and escape text
+  from the XML before it goes into the comment, so a crafted label can't add
+  formatting or `@mention` people.
+- **Scale the report.** For a pull request with many files, put only the failures in
+  the comment and link to the full summary, which also stays under GitHub's comment
+  size limit. Some teams would skip the comment entirely when everything passes.
 - **Inline annotations** on the failing line in the pull request diff.
 - **Comments on fork pull requests**, using a follow-up `workflow_run` workflow.
-- **Run the tests in CI**, and use Dependabot to keep the pinned actions up to date.
+- **Cancel outdated runs** when a new commit is pushed to the same pull request,
+  which also stops two runs from racing to post the comment.
+- **Alerts and trends.** Notify the team when the validator itself breaks (exit code
+  `2`), and track which rules fail most often.
+- **Run the tests in CI** with pinned test dependencies, and use Dependabot to keep
+  the pinned actions up to date, with a waiting period so a bad release gets caught
+  before it's adopted.
