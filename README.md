@@ -6,33 +6,39 @@ Safety Standards on every pull request.
 ## Approach
 
 When a pull request changes anything in `xml-processes/`, the
-[workflow](.github/workflows/xml-validation.yml) lists the files it added or changed
-and runs a [Python validator](validation/validate_processes.py) on each one. It uses
-the validator and rules from `main`, not the pull request's copy, so a pull request
-can't loosen the rules it's checked against. Every rule runs on every file, and the
-report shows each rule as passed or failed for each file. The report goes to the run
-summary and to one comment on the pull request, which is updated on later pushes. If
-any file fails, the check fails.
+[workflow](.github/workflows/xml-validation.yml) lists the files the pull request
+added or changed and runs a [Python validator](validation/validate_processes.py) on
+each one. It uses the validator and rules from the pull request's base branch
+(usually `main`), not the pull request's own copy, so a pull request can't loosen the
+rules it's checked against. Every rule runs on every file, and the report shows each
+rule as passed or failed for each file. The report goes to the run summary and to one
+comment on the pull request, which is updated on later pushes. If any file fails, the
+check fails.
 
 The validator reads each file as XML, a tree of shapes, instead of searching the
-text, so a word in a script comment or an escaped character can't fool it. For error
-handling, it looks at every Return Documents shape and passes the file if either of
-the shape's labels contains "error" in any case. For deprecated components, it
-collects every `componentId` on each shape and on everything inside it, and compares
-them to the blocklist, ignoring case. The blocklist lives in
+text. That way the word "Error" in a script comment doesn't count as error handling,
+and a banned ID written with XML escape codes is still caught. For error handling, a
+file passes if at least one Return Documents shape (`shapetype="returndocuments"`)
+has "error", in any case, in either of its labels: the `userlabel` attribute or the
+label in the shape's configuration. For deprecated components, it collects every
+`componentId` on each shape and on everything inside it, and compares them to the
+blocklist, ignoring case. The blocklist lives in
 [`factory_standards.toml`](validation/factory_standards.toml), so banning a component
 is a config change. Each rule is its own small function, so adding a rule doesn't
 touch the others. The validator uses only Python's standard library.
 
-I followed one rule: harden the supported path, and fail loudly on anything
-unsupported. A file in the folder that isn't readable XML fails instead of being
-skipped. A broken rules file exits with `2` (the tool broke) instead of `1` (a file
-failed), and if the check stops before writing a report, the summary and comment say
-so instead of going blank. The workflow can only read the repository and comment on
-pull requests, and it uses GitHub's own checkout and Python actions, pinned to exact
-commits. The rules are custom code, since no marketplace action knows Boomi's rules.
-The [tests](validation/test_validate_processes.py) cover the three samples and the
-edge cases, and the demo pull requests run it on GitHub.
+I followed one rule: harden the supported path, which is Boomi process XML in
+`xml-processes/`, and fail loudly on anything unsupported. A file in the folder that
+isn't readable XML fails instead of being skipped. A broken blocklist file exits with
+`2` (the tool broke) instead of `1` (a file failed), and if validation stops before
+writing a report, the summary and comment say so instead of going blank. The workflow
+can only read the repository and comment on pull requests, and it uses GitHub's own
+checkout and Python actions, pinned to exact commits. The rules are custom code, since
+no marketplace action checks Wonka's standards for Boomi processes. The
+[tests](validation/test_validate_processes.py) cover the three samples plus edge cases
+like broken or empty files and IDs nested inside a shape, and the
+[demo pull requests](https://github.com/Zenoctra/wonka-xml-validation/pulls) run it on
+GitHub.
 
 ## Running it locally
 
