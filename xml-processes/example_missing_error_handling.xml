@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><Component xmlns:bns="http://api.platform.boomi.com/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" branchId="QjoxNTE0MzA" branchName="main" componentId="9a4d9681-c0e6-448f-a8af-d9b45364e34a" createdBy="willy.wonka@chocolatefactory.com" createdDate="2025-03-12T06:04:10Z" currentVersion="true" deleted="false" folderFullPath="Wonka Chocolate Factory/Integrations/PRODUCTION PROCESSES" folderId="Rjo2NzY4OTg3" folderName="PRODUCTION PROCESSES" modifiedBy="charlie.bucket@chocolatefactory.com" modifiedDate="2025-07-18T07:44:25Z" name="Process Missing Error Handling" type="process" version="3">
+  <bns:encryptedValues/>
+  <bns:description/>
+  <bns:object>
+    <process allowSimultaneous="false" enableUserLog="false" processLogOnErrorOnly="false" purgeDataImmediately="false" updateRunDates="false" workload="general">
+      <shapes>
+        <shape image="start" name="shape1" shapetype="start" userlabel="" x="208.0" y="222.0">
+          <configuration>
+            <passthroughaction/>
+          </configuration>
+          <dragpoints>
+            <dragpoint name="shape1.dragpoint1" toShape="shape2" x="368.0" y="232.0"/>
+          </dragpoints>
+        </shape>
+        <shape image="dataprocess_icon" name="shape2" shapetype="dataprocess" userlabel="Process Chocolate Data" x="384.0" y="224.0">
+          <configuration>
+            <dataprocess>
+              <step index="1" key="1" name="Chocolate Processing" processtype="12">
+                <dataprocessscript componentId="cf0dd5db-90d7-4087-a29d-d7a5363b4f7e" language="groovy" useCache="true" useComponent="true">
+                  <script>// Process chocolate data
+for( int i = 0; i &lt; dataContext.getDataCount(); i++ ) {
+    InputStream is = dataContext.getStream(i);
+    Properties props = dataContext.getProperties(i);
+    dataContext.storeStream(is, props);
+}</script>
+                </dataprocessscript>
+              </step>
+            </dataprocess>
+          </configuration>
+          <dragpoints>
+            <dragpoint name="shape2.dragpoint1" toShape="shape3" x="544.0" y="232.0"/>
+          </dragpoints>
+        </shape>
+        <shape image="returndocuments_icon" name="shape3" shapetype="returndocuments" userlabel="Processing Complete" x="560.0" y="224.0">
+          <configuration>
+            <returndocuments label="Processing Complete"/>
+          </configuration>
+          <dragpoints/>
+        </shape>
+      </shapes>
+    </process>
+  </bns:object>
+  <bns:processOverrides/>
+</Component>
